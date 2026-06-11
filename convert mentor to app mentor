@@ -1,87 +1,100 @@
-You are editing the file mentor.html in this dashboard project. It is currently
-a working "Nova" AI Mentor page: a 3D avatar (left), a chat box (right), and a
-"cozy loader" that shows while the mentor is thinking.
+You are editing this dashboard project in VS Code. Two files matter:
+mentor.html (the AI Mentor page: a 3D "Nova" avatar, a chat box, and a "cozy
+loader" shown while thinking) and the api/ folder (Vercel serverless functions).
 
 GOAL
-Turn the mentor from a hardcoded macros/food coach into a GENERAL mentor that
-answers using ALL of the user's dashboard data (food, water, gym, finance,
-sleep/fitband, goals, peak/readiness, supplements — whatever the dashboard
-stores). Do NOT change any design, layout, colors, avatar, animations, or CSS.
-ONLY change (1) where the reply text comes from and (2) the cozy-loader sayings.
+1. Turn the mentor from a hardcoded macros/food coach into a GENERAL mentor that
+   answers using ALL of the user's dashboard data.
+2. Move the Anthropic API key OUT of the browser and into a server-side
+   environment variable, called through a new serverless function.
+Do NOT change any design, layout, colors, avatar, animations, or CSS. ONLY
+change (a) where the reply text comes from and (b) the cozy-loader sayings.
 
-WHAT TO REMOVE
-- The hardcoded `REPLIES` array and the `FALLBACK` array (the keyword-matched
-  canned coach answers about protein/macros/etc.).
-- The `pickReply()` keyword matcher.
-- The food/macros-specific cozy-loader lines in `CZ_LINES` and tags in `CZ_TAGS`.
-Leave EVERYTHING else (the Nova 3D engine, the chat bubbles, the cozy loader
-component, the palette switcher, the avatar reactions) exactly as it is.
+PART A — CREATE THE BACKEND FUNCTION AND .env FILE
+Create api/mentor.js:
+    export default async function handler(req, res) {
+      if (req.method !== 'POST') return res.status(405).end();
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(req.body),
+      });
+      const data = await r.json();
+      res.status(r.status).json(data);
+    }
 
-WHAT TO ADD — REAL AI REPLIES FROM DASHBOARD DATA
-1. Read the user's dashboard data. The dashboard stores its data in the browser
-   under localStorage (each app saves its own keys). Gather it like this:
-       function readDashboardData() {
-         const out = {};
-         for (let i = 0; i < localStorage.length; i++) {
-           const k = localStorage.key(i);
-           // skip the API key and theme so we don't leak/clutter
-           if (k === 'anthropic_key' || k === 'patron_theme') continue;
-           try { out[k] = JSON.parse(localStorage.getItem(k)); }
-           catch { out[k] = localStorage.getItem(k); }
-         }
-         return out;
-       }
-2. Replace the canned-reply logic in `respond()` so that, after the cozy loader
-   shows, it calls Claude with the user's message + their dashboard data as
-   context, and renders the returned text in the SAME coach bubble (keep the
-   <span class="tagchip">Nova</span> and the fade reveal).
-       async function askNova(userText) {
-         const key = localStorage.getItem('anthropic_key');
-         if (!key) return "Add your Anthropic API key in settings to chat with me.";
-         const data = readDashboardData();
-         const res = await fetch('https://api.anthropic.com/v1/messages', {
-           method: 'POST',
-           headers: {
-             'x-api-key': key,
-             'anthropic-version': '2023-06-01',
-             'anthropic-dangerous-direct-browser-access': 'true',
-             'content-type': 'application/json',
-           },
-           body: JSON.stringify({
-             model: 'claude-opus-4-8',
-             max_tokens: 1024,
-             system:
-               "You are Nova, the user's personal mentor inside their life-tracking " +
-               "dashboard. You can see ALL their data (food, water, gym, finance, " +
-               "sleep, readiness, goals, supplements). Use it to give honest, " +
-               "specific, encouraging guidance across any area of their life — not " +
-               "just nutrition. Keep replies short and always give ONE thing to act " +
-               "on. Here is their current dashboard data as JSON:\n" +
-               JSON.stringify(data),
-             messages: [{ role: 'user', content: userText }],
-           }),
-         });
-         const json = await res.json();
-         if (json.error) return "Hmm, I couldn't reach my brain just now — check your API key.";
-         return json.content[0].text;
-       }
-   Make the bubble that the cozy loader turns into show `await askNova(text)`.
-   Keep the existing Nova facial reactions (surprised -> thinking -> a mood).
-3. Update the cozy-loader sayings to be GENERAL mentor lines (not macros). Keep
-   the same { text, hl } format and the same number of lines/tags:
-       const CZ_TAGS = ['Thinking', 'One sec', 'On it'];
-       const CZ_LINES = [
-         { text: 'Reading your whole day across the dashboard.', hl: 'whole day' },
-         { text: 'Finding the one move that matters most right now.', hl: 'one move' },
-         { text: 'Keeping it honest and something you can do today.', hl: 'do today' },
-       ];
+Create a real .env file in the project root with this exact content:
+    ANTHROPIC_API_KEY=sk-ant-paste-your-key-here
 
-4. Add a small settings control so the user can paste their Anthropic API key,
-   saved to localStorage under 'anthropic_key'. Match the existing visual style
-   (reuse the .starter / chip styling already in the file). Do NOT restyle the
-   page — just a small "⚙ API key" input that fits the current look.
+Also create .env.example with the same line (as a template that IS committed),
+and make sure .env (not .env.example) is listed in .gitignore — add it if it
+isn't already, so the real key is never pushed to GitHub.
+
+After making the edits, print a short note telling me to open the .env file and
+replace sk-ant-paste-your-key-here with my real Anthropic API key.
+
+PART B — EDIT mentor.html
+Remove the hardcoded `REPLIES` array, the `FALLBACK` array, and the
+`pickReply()` keyword matcher (the canned macros/protein answers). Remove the
+food/macros-specific lines in CZ_LINES and tags in CZ_TAGS. Keep EVERYTHING
+else exactly as-is: the Nova 3D engine, chat bubbles, cozy loader visuals,
+palette switcher, and avatar reactions.
+
+Add a reader for the user's dashboard data (stored in localStorage by each app):
+    function readDashboardData() {
+      const out = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k === 'patron_theme') continue;
+        try { out[k] = JSON.parse(localStorage.getItem(k)); }
+        catch { out[k] = localStorage.getItem(k); }
+      }
+      return out;
+    }
+
+Replace the canned-reply logic in respond() so that, after the cozy loader
+shows, it calls the backend function and renders the returned text in the SAME
+coach bubble (keep the <span class="tagchip">Nova</span> and the fade reveal,
+and keep the existing Nova facial reactions surprised -> thinking -> mood):
+    async function askNova(userText) {
+      const data = readDashboardData();
+      const res = await fetch('/api/mentor', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-opus-4-8',
+          max_tokens: 1024,
+          system:
+            "You are Nova, the user's personal mentor inside their life-tracking " +
+            "dashboard. You can see ALL their data (food, water, gym, finance, " +
+            "sleep, readiness, goals, supplements). Give honest, specific, " +
+            "encouraging guidance across any area of their life — not just " +
+            "nutrition. Keep replies short and always give ONE thing to act on. " +
+            "Current dashboard data as JSON:\n" + JSON.stringify(data),
+          messages: [{ role: 'user', content: userText }],
+        }),
+      });
+      const json = await res.json();
+      if (json.error) return "Hmm, I couldn't reach my brain just now — check that the API key is set in .env.";
+      return json.content[0].text;
+    }
+Make the bubble that the cozy loader turns into show `await askNova(text)`.
+
+Update the cozy-loader sayings to be GENERAL mentor lines (same {text, hl}
+format and same count):
+    const CZ_TAGS = ['Thinking', 'One sec', 'On it'];
+    const CZ_LINES = [
+      { text: 'Reading your whole day across the dashboard.', hl: 'whole day' },
+      { text: 'Finding the one move that matters most right now.', hl: 'one move' },
+      { text: 'Keeping it honest and something you can do today.', hl: 'do today' },
+    ];
 
 CONSTRAINTS
-- Do not change any CSS, the avatar engine, the layout, or the cozy-loader visuals.
-- Only the reply SOURCE and the cozy-loader TEXT change.
-- Keep it a single self-contained mentor.html file.
+- Do not change any CSS, the avatar engine, the layout, or the cozy-loader look.
+- The key must NEVER appear in mentor.html or any client-side file — only in the
+  ANTHROPIC_API_KEY environment variable used by api/mentor.js.
+- Keep mentor.html a single self-contained file (besides the new api/mentor.js).
